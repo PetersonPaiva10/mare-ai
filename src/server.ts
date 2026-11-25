@@ -22,6 +22,14 @@ const hotelExemplo: HotelConfig = {
 
 const historicoConversas: Record<string, { role: 'user' | 'model'; parts: { text: string }[] }[]> = {};
 
+function normalizarTelefoneBrasil(telefone: string): string {
+  // Se for número brasileiro (55 + DDD + 8 dígitos = 12 dígitos), insere o 9 após o DDD
+  if (telefone.startsWith('55') && telefone.length === 12) {
+    return telefone.slice(0, 4) + '9' + telefone.slice(4);
+  }
+  return telefone;
+}
+
 async function enviarMensagemWhatsApp(paraTelefone: string, texto: string) {
   const token = process.env.WHATSAPP_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_ID;
@@ -31,9 +39,11 @@ async function enviarMensagemWhatsApp(paraTelefone: string, texto: string) {
     return;
   }
 
-  const url = 'https://facebook.com' + phoneNumberId + '/messages';
+  const destino = normalizarTelefoneBrasil(paraTelefone);
+  const base = 'https://graph.' + 'facebook' + '.com/v21.0/';
+  const url = `${base}${phoneNumberId}/messages`;
 
-  await fetch(url, {
+  const res = await fetch(url, {
     method: 'POST',
     headers: {
       'Authorization': 'Bearer ' + token,
@@ -41,11 +51,18 @@ async function enviarMensagemWhatsApp(paraTelefone: string, texto: string) {
     },
     body: JSON.stringify({
       messaging_product: 'whatsapp',
-      to: paraTelefone,
+      to: destino,
       type: 'text',
       text: { body: texto }
     })
   });
+
+  const data = await res.json();
+  if (!res.ok) {
+    console.error('Erro detalhado da Meta:', JSON.stringify(data));
+  } else {
+    console.log('Mensagem enviada com sucesso para:', destino);
+  }
 }
 
 app.get('/webhook', (req, res) => {
@@ -86,7 +103,7 @@ app.post('/webhook', async (req, res) => {
     });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.5-flash-lite',
+      model: 'gemini-2.5-flash',
       contents: historicoConversas[telefone],
       config: {
         systemInstruction: gerarSystemPrompt(hotelExemplo),
