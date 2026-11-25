@@ -1,4 +1,4 @@
-﻿import express from 'express';
+import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
@@ -22,20 +22,19 @@ const hotelExemplo: HotelConfig = {
 
 const historicoConversas: Record<string, { role: 'user' | 'model'; parts: { text: string }[] }[]> = {};
 
-// Função para enviar a resposta da IA direto para o WhatsApp do cliente via Meta Cloud API
 async function enviarMensagemWhatsApp(paraTelefone: string, texto: string) {
   const token = process.env.WHATSAPP_TOKEN;
   const phoneNumberId = process.env.WHATSAPP_PHONE_ID;
 
-  if (!token || !phoneNumberId) {
+  if (!token || !phoneNumberId || token === 'aguardando') {
     console.log('Simulação (sem token WhatsApp):', texto);
     return;
   }
 
-  await fetch(https://facebook.com{phoneNumberId}/messages, {
+  await fetch(`https://facebook.com{phoneNumberId}/messages`, {
     method: 'POST',
     headers: {
-      'Authorization': Bearer ,
+      'Authorization': `Bearer ${token}`,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
@@ -47,7 +46,6 @@ async function enviarMensagemWhatsApp(paraTelefone: string, texto: string) {
   });
 }
 
-// 1. Rota de verificação obrigatória da Meta (WhatsApp)
 app.get('/webhook', (req, res) => {
   const mode = req.query['hub.mode'];
   const token = req.query['hub.verify_token'];
@@ -60,22 +58,21 @@ app.get('/webhook', (req, res) => {
   return res.sendStatus(403);
 });
 
-// 2. Rota que recebe as mensagens reais do WhatsApp
 app.post('/webhook', async (req, res) => {
-  // Responde 200 imediatamente para a Meta não reenviar a mesma mensagem
   res.sendStatus(200);
 
   try {
-    const entry = req.body.entry?.[0];
-    const changes = entry?.changes?.[0];
-    const value = changes?.value;
-    const message = value?.messages?.[0];
+    const entry = req.body.entry && req.body.entry[0];
+    const changes = entry && entry.changes && entry.changes[0];
+    const value = changes && changes.value;
+    const message = value && value.messages && value.messages[0];
 
     if (!message || message.type !== 'text') return;
 
     const telefone = message.from;
     const textoRecebido = message.text.body;
-    const nomeCliente = value?.contacts?.[0]?.profile?.name || 'Hóspede';
+    const contato = value.contacts && value.contacts[0];
+    const nomeCliente = (contato && contato.profile && contato.profile.name) || 'Hóspede';
 
     if (!historicoConversas[telefone]) {
       historicoConversas[telefone] = [];
@@ -96,13 +93,10 @@ app.post('/webhook', async (req, res) => {
     });
 
     let respostaIA = response.text || '';
-    let transferirHumano = false;
 
     if (respostaIA.includes('[LEAD_QUALIFICADO]')) {
-      transferirHumano = true;
       respostaIA = respostaIA.replace('[LEAD_QUALIFICADO]', '').trim();
-      console.log(🔥 LEAD QUALIFICADO:  ());
-      // Aqui você pode disparar um alerta no WhatsApp do gerente do hotel!
+      console.log(`🔥 LEAD QUALIFICADO: ${nomeCliente} (${telefone})`);
     }
 
     historicoConversas[telefone].push({
@@ -116,7 +110,6 @@ app.post('/webhook', async (req, res) => {
   }
 });
 
-// Rota de saúde para o Render saber que o servidor está online
 app.get('/', (req, res) => {
   res.send('🌊 API Maré AI está online!');
 });
@@ -125,3 +118,4 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log('Servidor Mare AI rodando na porta ' + PORT);
 });
+
