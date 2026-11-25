@@ -103,7 +103,7 @@ app.post('/webhook', async (req, res) => {
     });
 
     const response = await ai.models.generateContent({
-      model: 'gemini-3.0-flash',
+      model: 'gemini-3-flash-preview',
       contents: historicoConversas[telefone],
       config: {
         systemInstruction: gerarSystemPrompt(hotelExemplo),
