@@ -2,7 +2,7 @@ import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import { GoogleGenAI } from '@google/genai';
-import { gerarSystemPrompt, gerarMensagensAutomacao, HotelConfig } from './hotelPrompt';
+import { gerarSystemPrompt, HotelConfig } from './hotelPrompt';
 
 dotenv.config();
 
@@ -31,10 +31,12 @@ async function enviarMensagemWhatsApp(paraTelefone: string, texto: string) {
     return;
   }
 
-  await fetch(`https://facebook.com{phoneNumberId}/messages`, {
+  const url = 'https://facebook.com' + phoneNumberId + '/messages';
+
+  await fetch(url, {
     method: 'POST',
     headers: {
-      'Authorization': `Bearer ${token}`,
+      'Authorization': 'Bearer ' + token,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
@@ -62,16 +64,16 @@ app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
 
   try {
-    const entry = req.body.entry && req.body.entry[0];
-    const changes = entry && entry.changes && entry.changes[0];
+    const entry = req.body.entry && req.body.entry.at(0);
+    const changes = entry && entry.changes && entry.changes.at(0);
     const value = changes && changes.value;
-    const message = value && value.messages && value.messages[0];
+    const message = value && value.messages && value.messages.at(0);
 
     if (!message || message.type !== 'text') return;
 
     const telefone = message.from;
     const textoRecebido = message.text.body;
-    const contato = value.contacts && value.contacts[0];
+    const contato = value.contacts && value.contacts.at(0);
     const nomeCliente = (contato && contato.profile && contato.profile.name) || 'Hóspede';
 
     if (!historicoConversas[telefone]) {
@@ -96,7 +98,7 @@ app.post('/webhook', async (req, res) => {
 
     if (respostaIA.includes('[LEAD_QUALIFICADO]')) {
       respostaIA = respostaIA.replace('[LEAD_QUALIFICADO]', '').trim();
-      console.log(`🔥 LEAD QUALIFICADO: ${nomeCliente} (${telefone})`);
+      console.log('🔥 LEAD QUALIFICADO: ' + nomeCliente + ' (' + telefone + ')');
     }
 
     historicoConversas[telefone].push({
@@ -118,4 +120,3 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
   console.log('Servidor Mare AI rodando na porta ' + PORT);
 });
-
