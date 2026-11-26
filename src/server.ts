@@ -22,89 +22,69 @@ const hotelExemplo: HotelConfig = {
 
 const historicoConversas: Record<string, { role: 'user' | 'model'; parts: { text: string }[] }[]> = {};
 
-function normalizarTelefoneBrasil(telefone: string): string {
-  // Se for número brasileiro (55 + DDD + 8 dígitos = 12 dígitos), insere o 9 após o DDD
-  if (telefone.startsWith('55') && telefone.length === 12) {
-    return telefone.slice(0, 4) + '9' + telefone.slice(4);
-  }
-  return telefone;
-}
+async function enviarMensagemEvolution(remoteJid: string, texto: string) {
+  const evolutionUrl = process.env.EVOLUTION_URL;
+  const evolutionKey = process.env.EVOLUTION_API_KEY || 'MinhaSenhaSecreta123';
+  const instanceName = process.env.EVOLUTION_INSTANCE || 'mare-ai';
 
-async function enviarMensagemWhatsApp(paraTelefone: string, texto: string) {
-  const token = process.env.WHATSAPP_TOKEN;
-  const phoneNumberId = process.env.WHATSAPP_PHONE_ID;
-
-  if (!token || !phoneNumberId || token === 'aguardando') {
-    console.log('Simulação (sem token WhatsApp):', texto);
+  if (!evolutionUrl) {
+    console.log('Falta configurar EVOLUTION_URL no Render:', texto);
     return;
   }
 
-  const destino = normalizarTelefoneBrasil(paraTelefone);
-  const base = 'https://graph.' + 'facebook' + '.com/v21.0/';
-  const url = `${base}${phoneNumberId}/messages`;
+  const url = `${evolutionUrl}/message/sendText/${instanceName}`;
 
   const res = await fetch(url, {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer ' + token,
+      'apikey': evolutionKey,
       'Content-Type': 'application/json'
     },
     body: JSON.stringify({
-      messaging_product: 'whatsapp',
-      to: destino,
-      type: 'text',
-      text: { body: texto }
+      number: remoteJid,
+      text: texto
     })
   });
 
-  const data = await res.json();
   if (!res.ok) {
-    console.error('Erro detalhado da Meta:', JSON.stringify(data));
+    console.error('Erro ao enviar na Evolution:', await res.text());
   } else {
-    console.log('Mensagem enviada com sucesso para:', destino);
+    console.log('Resposta enviada via Evolution para:', remoteJid);
   }
 }
-
-app.get('/webhook', (req, res) => {
-  const mode = req.query['hub.mode'];
-  const token = req.query['hub.verify_token'];
-  const challenge = req.query['hub.challenge'];
-
-  if (mode === 'subscribe' && token === process.env.WEBHOOK_VERIFY_TOKEN) {
-    console.log('Webhook da Meta verificado com sucesso!');
-    return res.status(200).send(challenge);
-  }
-  return res.sendStatus(403);
-});
 
 app.post('/webhook', async (req, res) => {
   res.sendStatus(200);
 
   try {
-    const entry = req.body.entry && req.body.entry.at(0);
-    const changes = entry && entry.changes && entry.changes.at(0);
-    const value = changes && changes.value;
-    const message = value && value.messages && value.messages.at(0);
+    const body = req.body;
+    if (body.event !== 'messages.upsert') return;
+    const data = body.data;
+    if (!data || data.key?.fromMe) return;
 
-    if (!message || message.type !== 'text') return;
+    const remoteJid = data.key?.remoteJid;
+    if (!remoteJid || remoteJid.includes('@g.us')) return;
 
-    const telefone = message.from;
-    const textoRecebido = message.text.body;
-    const contato = value.contacts && value.contacts.at(0);
-    const nomeCliente = (contato && contato.profile && contato.profile.name) || 'Hóspede';
+    const textoRecebido =
+      data.message?.conversation ||
+      data.message?.extendedTextMessage?.text;
 
-    if (!historicoConversas[telefone]) {
-      historicoConversas[telefone] = [];
+    if (!textoRecebido) return;
+
+    const nomeCliente = data.pushName || 'Hóspede';
+
+    if (!historicoConversas[remoteJid]) {
+      historicoConversas[remoteJid] = [];
     }
 
-    historicoConversas[telefone].push({
+    historicoConversas[remoteJid].push({
       role: 'user',
       parts: [{ text: textoRecebido }]
     });
 
     const response = await ai.models.generateContent({
       model: 'gemini-3-flash-preview',
-      contents: historicoConversas[telefone],
+      contents: historicoConversas[remoteJid],
       config: {
         systemInstruction: gerarSystemPrompt(hotelExemplo),
         temperature: 0.7,
@@ -115,22 +95,22 @@ app.post('/webhook', async (req, res) => {
 
     if (respostaIA.includes('[LEAD_QUALIFICADO]')) {
       respostaIA = respostaIA.replace('[LEAD_QUALIFICADO]', '').trim();
-      console.log('🔥 LEAD QUALIFICADO: ' + nomeCliente + ' (' + telefone + ')');
+      console.log('🔥 LEAD QUALIFICADO: ' + nomeCliente + ' (' + remoteJid + ')');
     }
 
-    historicoConversas[telefone].push({
+    historicoConversas[remoteJid].push({
       role: 'model',
       parts: [{ text: respostaIA }]
     });
 
-    await enviarMensagemWhatsApp(telefone, respostaIA);
+    await enviarMensagemEvolution(remoteJid, respostaIA);
   } catch (error: any) {
-    console.error('Erro no Webhook WhatsApp:', error?.message || error);
+    console.error('Erro no Webhook Evolution:', error?.message || error);
   }
 });
 
 app.get('/', (req, res) => {
-  res.send('🌊 API Maré AI está online!');
+  res.send('🌊 API Maré AI (Evolution) está online!');
 });
 
 const PORT = process.env.PORT || 3000;
